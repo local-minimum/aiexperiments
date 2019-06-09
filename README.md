@@ -16,7 +16,7 @@ In python3:
 
     import predictive_text
     result = predictive_text.train('myfile.txt')
-    result.speak()
+    print(result.speak())
 
 You can save:
 
