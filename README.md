@@ -7,6 +7,7 @@ Mostly just documenting my experimenting and learning some AI
 
 Get python 3.6 or 3.7 and pip to match.
 Run:
+
     pip install -r requirements.txt
 
 # Predictive Text
