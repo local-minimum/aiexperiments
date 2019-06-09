@@ -129,6 +129,21 @@ class PredictiveText:
         return self._training_data[sequenceidx]
 
     def speak(self, seed=None, maxlen=300, max_sentences=5):
+        """Produce text.
+
+        Arguments:
+            seed
+                a sequence of numbers representing words to get it going
+                if blank, a random seed from the training text will be
+                used.
+            maxlen
+                How many words the output may be
+            max_sentences
+                How many sentences the output may be
+
+        Returns:
+            A generated text
+        """
         if seed is None:
             seed = self.get_random_seed()
         phrase = [w for w in seed]
