@@ -1,3 +1,8 @@
+# About
+
+Code inspired by http://rubikscode.net/2018/02/19/artificial-neural-networks-series/
+Mostly just documenting my experimenting and learning some AI
+
 # Install
 
 Get python 3.6 or 3.7 and pip to match.
