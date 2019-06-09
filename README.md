@@ -12,6 +12,9 @@ Run:
 
 # Predictive Text
 
+Couldn't really follow the instructions in the tutorial, I feel like this
+model is a bit too prone to over-fitting
+
 In python3 train:
 
     import predictive_text
