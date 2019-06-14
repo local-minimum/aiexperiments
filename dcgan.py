@@ -1,6 +1,7 @@
+from glob import glob
 import os
 from pathlib import Path
-from glob import glob
+import pickle
 from time import time
 
 import cv2
@@ -11,7 +12,7 @@ from tensorflow.keras.layers import (
     Input, Dense, Reshape, Flatten, Dropout, BatchNormalization,
     Activation, ZeroPadding2D, UpSampling2D, Conv2D, LeakyReLU
 )
-from tensorflow.keras.models import Sequential, Model
+from tensorflow.keras.models import Sequential, Model, load_model
 from tensorflow.keras.optimizers import Adam
 from keras.datasets import fashion_mnist
 
@@ -39,6 +40,14 @@ class ImageHelper:
         self.rows = rows
         self.cols = cols
         self.image_shape = image_shape
+
+    def serialized(self):
+        return {
+            "_save_path": self._save_path,
+            "rows": self.rows,
+            "cols": self.cols,
+            "image_shape": self.image_shape,
+        }
     
     @property
     def eval_size(self):
@@ -56,7 +65,7 @@ class ImageHelper:
 
 
 class DCGAN:
-    def __init__(self, image_shape, image_helper, *, generator_input_dim=100):
+    def __init__(self, image_shape, image_helper, *, generator_input_dim=100, models=None):
         optimizer = Adam(0.0002, 0.5)
         self._gen_base_dims = [d // 4 for d in image_shape[:2]]
         assert (
@@ -69,11 +78,18 @@ class DCGAN:
         self._generator_input_dim = generator_input_dim
         self._image_channels = image_shape[-1]
 
-        self._generator_model = self._build_generator_model()
-        self._discriminator_model = self._build_and_compile_discriminator_model(optimizer)
-        self._gan = self._build_and_compile_gan(
-            optimizer, self._generator_model, self._discriminator_model,
-        )
+        if models:
+            self._generator_model = models['generator']
+            self._discriminator_model = models['discriminator']
+            self._gan = models['gan']
+        else:
+            self._generator_model = self._build_generator_model()
+            self._discriminator_model = self._build_and_compile_discriminator_model(
+                optimizer,
+            )
+            self._gan = self._build_and_compile_gan(
+                optimizer, self._generator_model, self._discriminator_model,
+            )
 
     def _build_generator_model(self):
         model_input = Input(shape=(self._generator_input_dim,))
@@ -159,7 +175,10 @@ class DCGAN:
         print(" Generator loss:     {:.5f}".format(generator_loss))
         print("--------------------------------------")
 
-    def train(self, epochs, train_data, batch_size, *, save_image_each=100, report_each=20):
+    def train(
+        self, epochs, train_data, batch_size, *, save_image_each=100, report_each=20,
+        save_model_path=None, save_model_each=5000,
+    ):
         real = np.ones((batch_size, 1))
         fake = np.zeros((batch_size, 1))
 
@@ -184,6 +203,35 @@ class DCGAN:
 
             if epoch % save_image_each == 0:
                 self._save_images(epoch)
+
+            if epoch % save_model_each == 0 and epoch and save_model_path:
+                self.save("{}.epoch{}".format(save_model_path, str(epoch).zfill(6)))
+
+    def save(self, path):
+        self._gan.save("{}.gan.h5".format(path))
+        self._generator_model.save("{}.gen.h5".format(path))
+        self._discriminator_model.save("{}.dis.h5".format(path))
+        with open("{}.pickle".format(path), 'wb') as fh:
+            pickle.dump({
+                'image_helper': self._image_helper.serialized(),
+                'image_shape': self._image_shape,
+                'image_gen_dim': self._generator_input_dim,
+            }, fh)
+
+    @staticmethod
+    def load(path):
+        gan = load_model("{}.gan.h5".format(path))    
+        generator = load_model("{}.gen.h5".format(path))
+        discriminator = load_model("{}.dis.h5".format(path))
+        with open("{}.pickle".format(path), 'rb') as fh:
+            data = pickle.load(fh)
+        image_helper = ImageHelper(**data['image_helper'])
+        dcgan = DCGAN(
+            data['image_shape'], image_helper, generator_input_dim=data['image_gen_dim'],
+            models={'gan': gan, 'generator': generator, 'discriminator': discriminator},
+        )
+        return dcgan
+
 
 
 def demo():
