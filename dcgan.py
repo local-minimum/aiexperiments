@@ -35,6 +35,8 @@ def images_to_array(path, *, resize=None, gray=True):
 class ImageHelper:
 
     def __init__(self, save_path, rows, cols, image_shape):
+        if not instance(save_path, Path):
+            save_path = Path(save_path)
         self._save_path = save_path
         os.makedirs(str(save_path), exist_ok=True) 
         self.rows = rows
@@ -53,15 +55,15 @@ class ImageHelper:
     def eval_size(self):
         return self.rows * self.cols
 
-    def write_data_as_image(self, data, epoch):
+    def write_data_as_image(self, data, epoch=None, filename=None):
         data = np.reshape((data + 1) * 127.5, (self.rows, self.cols) + self.image_shape)
         data = np.concatenate(np.concatenate(data, 1), 1)
-        cv2.imwrite(
-            "{}{}.png".format(
+        if filename is None:
+            filename = "{}{}.png".format(
                 self._save_path / 'epoch',
-                str(epoch).zfill(6)),
-            data,
-        )
+                str(epoch).zfill(6),
+            )
+        cv2.imwrite(data, filename)
 
 
 class DCGAN:
@@ -156,7 +158,7 @@ class DCGAN:
 
     def _save_images(self, epoch):
         generated = self._predict_noise(self._image_helper.eval_size)
-        self._image_helper.write_data_as_image(generated, epoch)
+        self._image_helper.write_data_as_image(generated, epoch=epoch)
 
     def _get_noise(self, batch_size):
         return np.random.normal(0, 1, (batch_size, self._generator_input_dim))
@@ -206,6 +208,11 @@ class DCGAN:
 
             if epoch % save_model_each == 0 and epoch and save_model_path:
                 self.save("{}.epoch{}".format(save_model_path, str(epoch).zfill(6)))
+
+    def make_image_collage(self, save_dir, filename, rows=8, cols=8):
+        image_helper = ImageHelper(save_dir, rows, cols, self._image_shape)
+        generated = self._predict_noise(image_helper.eval_size)
+        image_helper.write_data_as_image(generated, filename=filename)
 
     def save(self, path):
         self._gan.save("{}.gan.h5".format(path))
