@@ -187,14 +187,12 @@ class DCGAN:
 
 
 def demo():
-    (X, _), (_, _) = fashion_mnist.load_data()
-    X_train = X / 127.5 - 1
-    X_train = np.expand_dims(X_train, axis=3)
-    print(X_train.shape)
-    image_helper = ImageHelper(Path('demo-fashion'), 8, 8, X_train[0].shape)
-    gan = DCGAN(X_train[0].shape, image_helper)
-    gan.train(20000, X_train, batch_size=32)
+    def demo_data_loader():
+        (X, _), (_, _) = fashion_mnist.load_data()
+        X = X / 127.5 - 1
+        return np.expand_dims(X, axis=3)
 
-
-if __name__ == '__main__':
-    demo()
+    X = demo_data_loader()
+    image_helper = ImageHelper(Path('SAMPLES/demo-fashion'), 8, 8, X[0].shape)
+    gan = DCGAN(X[0].shape, image_helper)
+    gan.train(20000, X, batch_size=32)
