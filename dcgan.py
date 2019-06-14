@@ -154,7 +154,7 @@ class DCGAN:
         next_save = save_image_each - (epoch % save_image_each)
         print("--------------------------------------")
         print(" Epoch: {} ({:.2f} s/epoch)".format(epoch, speed))
-        print("     - Next Image {:.2f}".format(next_save * speed))
+        print("     - Next Image {:.2f}s".format(next_save * speed))
         print(" Discriminator loss: {:.5f}".format(discriminator_loss[0]))
         print(" Generator loss:     {:.5f}".format(generator_loss))
         print("--------------------------------------")
