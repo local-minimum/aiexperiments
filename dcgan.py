@@ -67,8 +67,71 @@ class ImageHelper:
 
 
 class DCGAN:
-    def __init__(self, image_shape, image_helper, *, generator_input_dim=100, models=None):
-        optimizer = Adam(0.0002, 0.5)
+    def __init__(
+        self, image_shape, image_helper=None, *,
+        generator_input_dim=100, models=None, generator_settings=None,
+        discriminator_settings=None, optimizer_settings=None,
+    ):
+        """Class to manage a DCGAN
+
+        Image generation is fun!
+
+        Arguments:
+            image_shape (tuple):
+                Shape of the image, typically (64, 64, 3) or (64, 64, 1)
+            image_helper (ImageHelper):
+                To output sample images. If omitted class can't save images
+        Keyword Arguments:
+            generator_input_dim (int):
+                Length of the vector that the generator takes as input
+                Default: 100
+            models (Optional[Dict]):
+                Used to load previously saved network instead of building new
+                ones. The dictionary should have keys 'gen' and 'dis' for the
+                generator model and discriminator model. This argument
+                shouldn't be needed to use, instead see `DCGAN.load`
+            generator_settings (Optional[Dict]):
+                If supplied can override the default generator settings.
+                Understood keys:
+                    * 'conv2d-startsize' (int): The independent size of the first
+                        2D convolution layer (remaining dimensions come from
+                        the image shape). The value must be dividable by 2.
+                        There are 2 of these layers, and each decrease with a
+                        factor 2 compared to previous
+                        Default: 128
+                    * 'normalization-momentum' (float): The batch normalization
+                        momentum.
+                        Default: 0.8
+            discriminator_settings (Optional[Dict]):
+                If supplied can override the default discriminator settings.
+                Understoode keys:
+                    * 'conv2d-startsize' (int): The independent size of the first
+                        2D convolution layer. There are 3 of these layers,
+                        and each increase with a factor 2 compared to previous
+                        Default: 32
+                    * 'normalization-momentum' (float): The batch normalization
+                        momentum.
+                        Default: 0.8
+                    * 'dropout' (float): The dropoout factor the counters
+                        overfitting.
+                        Default: 0.25
+                    * 'leakyrelu-alpha': Alpha setting to the LeakyReLU layer
+                        Default: 0.2
+            optimizer_settings (Optional[Dict]):
+                If supplies overrides the Adam optimizer's defaults
+                Understood keys:
+                    * 'learning-rate': How much is learned each batch
+                        Default: 0.0002
+                    * 'beta_1': The first beta factor
+                        Default: 0.5
+        """
+        if optimizer_settings is None:
+            optimizer_settings = {}
+        learning_rate = float(optimizer_settings.get('learning-rate', 0.0002))
+        assert learning >= 0
+        beta_1 = float(optimizer_settings.get('beta_1', 0.5))
+        assert 0 < beta_1 < 1
+        optimizer = Adam(learning_rate, beta_1)
         self._gen_base_dims = [d // 4 for d in image_shape[:2]]
         assert all(
             a * 4 == b for a, b in zip(self._gen_base_dims,  image_shape[:2])
@@ -80,6 +143,12 @@ class DCGAN:
         self._generator_input_dim = generator_input_dim
         self._image_channels = image_shape[-1]
         self._epochs = 0
+        if generator_settings is None:
+            generator_settings = {}
+        self._generator_settings = generator_settings
+        if discriminator_settings is None
+            discriminator_settings = {}
+        self._discriminator_settings = discriminator_settings
 
         if models:
             self._generator_model = models['generator']
@@ -100,16 +169,23 @@ class DCGAN:
     def _build_generator_model(self):
         model_input = Input(shape=(self._generator_input_dim,))
         d1, d2 = self._gen_base_dims
+        settings = self._generator_settings
+        conv_startsize = settings.get('conv2d-startsize', 128)
+        assert isinstance(conv_startsize, int)
+        assert (conv_startsize // 2) * 2 == conv_startsize, "conv2d-startsize must be dividable by 2"
+        norm_momentum = float(settings.get('normalization-momentum', 0.8))
+        assert 0 <= norm_momentum <= 1.0
+
         model_sequence = Sequential([
-            Dense(128 * d1 * d2, activation='relu', input_dim=self._generator_input_dim),
-            Reshape((d1, d2, 128)),
+            Dense(conv_startsize * d1 * d2, activation='relu', input_dim=self._generator_input_dim),
+            Reshape((d1, d2, conv_startsize)),
             UpSampling2D(),
-            Conv2D(128, kernel_size=3, padding='same'),
-            BatchNormalization(momentum=0.8),
+            Conv2D(conv_startsize, kernel_size=3, padding='same'),
+            BatchNormalization(momentum=norm_momentum),
             Activation('relu'),
             UpSampling2D(),
-            Conv2D(64, kernel_size=3, padding='same'),
-            BatchNormalization(momentum=.8),
+            Conv2D(conv_startsize // 2, kernel_size=3, padding='same'),
+            BatchNormalization(momentum=norm_momentum),
             Activation('relu'),
             Conv2D(self._image_channels, kernel_size=3, padding='same'),
             Activation('tanh'),
@@ -119,23 +195,33 @@ class DCGAN:
 
     def _build_and_compile_discriminator_model(self, optimizer):
         model_input = Input(shape=self._image_shape)
+        settings = self._discriminator_settings
+        start_conv = int(settings.get('conv2d-startsize', 32))
+        dropout = float(settings.get('dropout', 0.25))
+        assert 0 <= dropout < 1.
+        norm_momentum = float(settings.get('normalization-momentum', 0.8))
+        assert 0 <= norm_momentum <= 1.0
+        relu_alpha = float(settings.get('leakyrelu-alpha', 0.2))
+        assert relu_alpha >= 0.
         model_sequence = Sequential([
-            Conv2D(32, kernel_size=3, strides=2, input_shape=self._image_shape, padding='same'),
-            LeakyReLU(alpha=0.2),
-            Dropout(.25),
-            Conv2D(64, kernel_size=3, strides=2, padding='same'),
+            Conv2D(
+                start_conv, kernel_size=3, strides=2, input_shape=self._image_shape, padding='same',
+            ),
+            LeakyReLU(alpha=relu_alpha),
+            Dropout(dropout),
+            Conv2D(start_conv * 2, kernel_size=3, strides=2, padding='same'),
             ZeroPadding2D(padding=((0, 1), (0, 1))),
-            BatchNormalization(momentum=0.8),
-            LeakyReLU(alpha=.2),
-            Dropout(.25),
-            Conv2D(128, kernel_size=3, strides=2, padding='same'),
-            BatchNormalization(momentum=.8),
-            LeakyReLU(.2),
-            Dropout(.25),
-            Conv2D(256, kernel_size=3, strides=2, padding='same'),
-            BatchNormalization(momentum=.8),
-            LeakyReLU(alpha=.2),
-            Dropout(.25),
+            BatchNormalization(momentum=norm_momentum),
+            LeakyReLU(alpha=relu_alpha),
+            Dropout(dropout),
+            Conv2D(start_conv * 4, kernel_size=3, strides=2, padding='same'),
+            BatchNormalization(momentum=norm_momentum),
+            LeakyReLU(alpha=relu_alpha),
+            Dropout(dropout),
+            Conv2D(start_conv * 8, kernel_size=3, strides=2, padding='same'),
+            BatchNormalization(momentum=norm_momentum),
+            LeakyReLU(alpha=relu_alpha),
+            Dropout(dropout),
             Flatten(),
             Dense(1, activation='sigmoid'),
         ])
@@ -161,6 +247,9 @@ class DCGAN:
         return model
 
     def _save_images(self, epoch):
+        if not self._image_helper:
+            print("No image helper")
+            return
         generated = self._predict_noise(self._image_helper.eval_size)
         self._image_helper.write_data_as_image(generated, epoch=epoch)
 
@@ -228,6 +317,8 @@ class DCGAN:
         if epoch % save_model_each != 0 and epoch and save_model_path:
             self.save("{}.epoch{}".format(save_model_path, str(epoch).zfill(6)))
 
+    def set_image_helper(self, image_helper):
+        self._image_helper = image_helper
 
     def make_image_collage(self, save_dir, filename, rows=8, cols=8):
         image_helper = ImageHelper(save_dir, rows, cols, self._image_shape)
@@ -239,7 +330,7 @@ class DCGAN:
         self._discriminator_model.save("{}.dis.h5".format(path))
         with open("{}.pickle".format(path), 'wb') as fh:
             pickle.dump({
-                'image_helper': self._image_helper.serialized(),
+                'image_helper': self._image_helper.serialized() if self._image_helper else None,
                 'image_shape': self._image_shape,
                 'image_gen_dim': self._generator_input_dim,
                 'epochs': self._epochs,
@@ -265,7 +356,7 @@ class DCGAN:
 
 def demo():
     def demo_data_loader():
-        (X, _), (_, _) = fashion_mnist.load_data()
+        (X, _), _ = fashion_mnist.load_data()
         X = X / 127.5 - 1
         return np.expand_dims(X, axis=3)
 
