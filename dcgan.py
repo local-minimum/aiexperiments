@@ -35,7 +35,7 @@ def images_to_array(path, *, resize=None, gray=True):
 class ImageHelper:
 
     def __init__(self, save_path, rows, cols, image_shape):
-        if not instance(save_path, Path):
+        if not isinstance(save_path, Path):
             save_path = Path(save_path)
         self._save_path = save_path
         os.makedirs(str(save_path), exist_ok=True) 
@@ -45,7 +45,7 @@ class ImageHelper:
 
     def serialized(self):
         return {
-            "_save_path": self._save_path,
+            "save_path": self._save_path,
             "rows": self.rows,
             "cols": self.cols,
             "image_shape": self.image_shape,
@@ -55,7 +55,7 @@ class ImageHelper:
     def eval_size(self):
         return self.rows * self.cols
 
-    def write_data_as_image(self, data, epoch=None, filename=None):
+    def write_data_as_image(self, data, *, epoch=None, filename=None):
         data = np.reshape((data + 1) * 127.5, (self.rows, self.cols) + self.image_shape)
         data = np.concatenate(np.concatenate(data, 1), 1)
         if filename is None:
@@ -63,27 +63,31 @@ class ImageHelper:
                 self._save_path / 'epoch',
                 str(epoch).zfill(6),
             )
-        cv2.imwrite(data, filename)
+        cv2.imwrite(filename, data)
 
 
 class DCGAN:
     def __init__(self, image_shape, image_helper, *, generator_input_dim=100, models=None):
         optimizer = Adam(0.0002, 0.5)
         self._gen_base_dims = [d // 4 for d in image_shape[:2]]
-        assert (
-            [v * 4 for v in self._gen_base_dims] == image_shape[:2],
-            "Dimensions must be dividable by 4"
-        )
+        assert all(
+            a * 4 == b for a, b in zip(self._gen_base_dims,  image_shape[:2])
+        ), "Dimensions must be dividable by 4 ({})".format(image_shape[:2])
+        
 
         self._image_helper = image_helper
         self._image_shape = image_shape
         self._generator_input_dim = generator_input_dim
         self._image_channels = image_shape[-1]
+        self._epochs = 0
 
         if models:
             self._generator_model = models['generator']
             self._discriminator_model = models['discriminator']
-            self._gan = models['gan']
+            self._gan = self._build_and_compile_gan(
+                optimizer, self._generator_model, self._discriminator_model,
+            )
+
         else:
             self._generator_model = self._build_generator_model()
             self._discriminator_model = self._build_and_compile_discriminator_model(
@@ -185,7 +189,7 @@ class DCGAN:
         fake = np.zeros((batch_size, 1))
 
         start = time()
-        for epoch in range(epochs):
+        for epoch in range(self._epochs, self._epochs + epochs):
             # Train Discriminator
             batch_indexes = np.random.randint(0, train_data.shape[0], batch_size)
             batch = train_data[batch_indexes]
@@ -202,12 +206,28 @@ class DCGAN:
                 self._report_progress(
                     epoch, discriminator_loss, generator_loss, start, save_image_each,
                 )
+                self._epochs = epoch + 1
 
             if epoch % save_image_each == 0:
                 self._save_images(epoch)
+                self._epochs = epoch + 1
 
             if epoch % save_model_each == 0 and epoch and save_model_path:
                 self.save("{}.epoch{}".format(save_model_path, str(epoch).zfill(6)))
+                self._epochs = epoch +1
+
+        self._epochs = epochs
+        if epoch % report_each != 0:
+            self._report_progress(
+                epoch, discriminator_loss, generator_loss, start, save_image_each,
+            )
+
+        if epoch % save_image_each != 0:
+            self._save_images(epoch)
+
+        if epoch % save_model_each != 0 and epoch and save_model_path:
+            self.save("{}.epoch{}".format(save_model_path, str(epoch).zfill(6)))
+
 
     def make_image_collage(self, save_dir, filename, rows=8, cols=8):
         image_helper = ImageHelper(save_dir, rows, cols, self._image_shape)
@@ -215,7 +235,6 @@ class DCGAN:
         image_helper.write_data_as_image(generated, filename=filename)
 
     def save(self, path):
-        self._gan.save("{}.gan.h5".format(path))
         self._generator_model.save("{}.gen.h5".format(path))
         self._discriminator_model.save("{}.dis.h5".format(path))
         with open("{}.pickle".format(path), 'wb') as fh:
@@ -223,20 +242,23 @@ class DCGAN:
                 'image_helper': self._image_helper.serialized(),
                 'image_shape': self._image_shape,
                 'image_gen_dim': self._generator_input_dim,
+                'epochs': self._epochs,
             }, fh)
 
     @staticmethod
-    def load(path):
-        gan = load_model("{}.gan.h5".format(path))    
+    def load(path, image_helper=None):
         generator = load_model("{}.gen.h5".format(path))
         discriminator = load_model("{}.dis.h5".format(path))
         with open("{}.pickle".format(path), 'rb') as fh:
             data = pickle.load(fh)
-        image_helper = ImageHelper(**data['image_helper'])
+        if image_helper is None:
+            ih_data = data['image_helper']
+            image_helper = ImageHelper(**ih_data)
         dcgan = DCGAN(
             data['image_shape'], image_helper, generator_input_dim=data['image_gen_dim'],
-            models={'gan': gan, 'generator': generator, 'discriminator': discriminator},
+            models={'generator': generator, 'discriminator': discriminator},
         )
+        dcgan._epochs = data.get('epochs', 0)
         return dcgan
 
 
