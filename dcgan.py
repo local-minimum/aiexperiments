@@ -128,7 +128,7 @@ class DCGAN:
         if optimizer_settings is None:
             optimizer_settings = {}
         learning_rate = float(optimizer_settings.get('learning-rate', 0.0002))
-        assert learning >= 0
+        assert learning_rate >= 0
         beta_1 = float(optimizer_settings.get('beta_1', 0.5))
         assert 0 < beta_1 < 1
         optimizer = Adam(learning_rate, beta_1)
@@ -146,7 +146,7 @@ class DCGAN:
         if generator_settings is None:
             generator_settings = {}
         self._generator_settings = generator_settings
-        if discriminator_settings is None
+        if discriminator_settings is None:
             discriminator_settings = {}
         self._discriminator_settings = discriminator_settings
 
@@ -328,6 +328,7 @@ class DCGAN:
     def save(self, path):
         self._generator_model.save("{}.gen.h5".format(path))
         self._discriminator_model.save("{}.dis.h5".format(path))
+        self._gan.save("{}.gan.h5".format(path))
         with open("{}.pickle".format(path), 'wb') as fh:
             pickle.dump({
                 'image_helper': self._image_helper.serialized() if self._image_helper else None,
