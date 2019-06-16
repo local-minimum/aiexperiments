@@ -260,8 +260,10 @@ class DCGAN:
         noise = self._get_noise(size)
         return self._generator_model.predict(noise)
 
-    def _report_progress(self, epoch, discriminator_loss, generator_loss, start, save_image_each):
-        speed = (time() - start) / (epoch + 1)
+    def _report_progress(
+            self, epoch, discriminator_loss, generator_loss, ref_epoch, ref_time, save_image_each,
+    ):
+        speed = (time() - ref_time) / (epoch + 1 - ref_epoch)
         next_save = save_image_each - (epoch % save_image_each)
         print("--------------------------------------")
         print(" Epoch: {} ({:.2f} s/epoch)".format(epoch, speed))
@@ -278,6 +280,8 @@ class DCGAN:
         fake = np.zeros((batch_size, 1))
 
         start = time()
+        ref_time = start
+        ref_epochs = self._epochs
         for epoch in range(self._epochs, self._epochs + epochs):
             # Train Discriminator
             batch_indexes = np.random.randint(0, train_data.shape[0], batch_size)
@@ -293,9 +297,11 @@ class DCGAN:
 
             if epoch % report_each == 0:
                 self._report_progress(
-                    epoch, discriminator_loss, generator_loss, start, save_image_each,
+                    epoch, discriminator_loss, generator_loss, ref_epoch, ref_time, save_image_each,
                 )
                 self._epochs = epoch + 1
+                ref_time = time()
+                ref_epochs = epoch
 
             if epoch % save_image_each == 0:
                 self._save_images(epoch)
@@ -316,6 +322,7 @@ class DCGAN:
 
         if epoch % save_model_each != 0 and epoch and save_model_path:
             self.save("{}.epoch{}".format(save_model_path, str(epoch).zfill(6)))
+        print("Training ran for {:.1f} hours".format((time() - start) / 3600.))
 
     def set_image_helper(self, image_helper):
         self._image_helper = image_helper
