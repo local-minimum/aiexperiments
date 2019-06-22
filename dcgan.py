@@ -281,7 +281,7 @@ class DCGAN:
 
         start = time()
         ref_time = start
-        ref_epochs = self._epochs
+        ref_epoch = self._epochs
         for epoch in range(self._epochs, self._epochs + epochs):
             # Train Discriminator
             batch_indexes = np.random.randint(0, train_data.shape[0], batch_size)
@@ -301,7 +301,7 @@ class DCGAN:
                 )
                 self._epochs = epoch + 1
                 ref_time = time()
-                ref_epochs = epoch
+                ref_epoch = epoch
 
             if epoch % save_image_each == 0:
                 self._save_images(epoch)
