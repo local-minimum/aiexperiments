@@ -314,7 +314,7 @@ class DCGAN:
         self._epochs = epochs
         if epoch % report_each != 0:
             self._report_progress(
-                epoch, discriminator_loss, generator_loss, start, save_image_each,
+                epoch, discriminator_loss, generator_loss, ref_epoch, ref_time, save_image_each,
             )
 
         if epoch % save_image_each != 0:
