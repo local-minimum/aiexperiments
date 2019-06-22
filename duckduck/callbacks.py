@@ -69,7 +69,7 @@ class ImageSaver:
         try:
             r = requests.get(url, stream=True)
         except requests.exceptions.SSLError:
-            print("Skipping {} (status {})".format(url, r.status_code))
+            print("Skipping {} (SSLError)".format(url))
             return
         try:
             r.raise_for_status()
