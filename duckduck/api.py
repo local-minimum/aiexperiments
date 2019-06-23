@@ -37,7 +37,7 @@ def get_vqd(keywords):
     return vqd.group(1)
 
 
-def search(keywords, max_results=None, callback=printJSON, logger=logger):
+def search(keywords, *, callback=printJSON, logger=logger):
     print('Will start soon, be patient..')
     SLEEPTIME = 5.
     SLEEPITERATIONS = 10

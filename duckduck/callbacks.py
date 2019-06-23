@@ -52,7 +52,7 @@ class ImageSaver:
             overwrite=False,
     ):
         self.prefix = prefix
-        self.targetdir = targetdir 
+        self.targetdir = Path(targetdir)
         self.known_formats = known_formats
         self.threads = []
         self.queue = Queue()
@@ -71,6 +71,11 @@ class ImageSaver:
         except requests.exceptions.SSLError:
             print("Skipping {} (SSLError)".format(url))
             return
+        except requests.exceptions.TooManyRedirects:
+            print("Skipping {} (Too many redirects)".format(url))
+            return
+        except requests.exceptions.ConnectionError:
+            print("Skipping {} (Connection Error)".format(url))
         try:
             r.raise_for_status()
         except requests.exceptions.HTTPError:
