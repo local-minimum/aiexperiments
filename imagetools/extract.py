@@ -1,5 +1,8 @@
 from glob import glob
+import logging
 from pathlib import Path
+from threading import Thread
+from queue import Queue
 
 import cv2
 import numpy as np
@@ -79,29 +82,57 @@ def crop_scale_crop(image, target=(128, 128), f1=50, f2=2):
     edges = toedges(gray)
     threshold = get_first_crop_threshold(gray, f1, f2)
     image = crop(image, edges, target, threshold=threshold)
-    print('Cropped: {}'.format(image.shape[:2]))
+    logging.info('Cropped: {}'.format(image.shape[:2]))
     image = scale(image, target)
-    print('Scaled: {}'.format(image.shape[:2]))
+    logging.info('Scaled: {}'.format(image.shape[:2]))
     gray = togray(image)
     edges = toedges(gray)
     image = crop(image, edges, target)
-    print('Cropped: {}'.format(image.shape[:2]))
+    logging.info('Cropped: {}'.format(image.shape[:2]))
     return image
 
 
+def _extract(image, path, idx, *, target=None, f1=None, f2=None, outprefix=None):
+    logging.info("\n--- {} ---".format(path))
+    if image is None or image.size == 0:
+        logging.info("***Couldn't read***")
+        return
+    sy, sx = image.shape[:2]
+    if sy < target[1] or sx < target[0]:
+        logging.info("***Too small***")
+        return
+    small = crop_scale_crop(image, target=target, f1=f1, f2=f2)
+    out = Path(path).parent / ('crop' + str(idx).zfill(6) + '.jpg')
+    logging.info("Saved as {}".format(out))
+    cv2.imwrite(str(out), small)
+
+def _worker(queue):
+    while True:
+        item = queue.get()
+        if item is None:
+            break
+        (image, path, idx), kwargs = item
+        _extract(image, path, idx, **kwargs)
+        queue.task_done()
+
+
 def extract(path, target=(128, 128), f1=50, f2=2, outprefix='crop'):
-    i = 0
-    for image, p in loader(path):
-        print("\n** {}".format(p))
-        if image is None or image.size == 0:
-            print("Couldn't read")
-            continue
-        sy, sx = image.shape[:2]
-        if sy < target[1] or sx < target[0]:
-            print("Too small")
-            continue
-        small = crop_scale_crop(image, target=target, f1=f1, f2=f2)
-        out = Path(p).parent / ('crop' + str(i).zfill(6) + '.jpg')
-        print("Saved as {}".format(out))
-        cv2.imwrite(str(out), small)
-        i += 1
+    kwargs = {"target": target, "f1": f1, "f2": f2, "outprefix": outprefix}
+    futures = []
+    queue = Queue(maxsize=20)
+    nworkers = 12
+    workers = []
+    for _ in range(nworkers):
+        worker = Thread(target=_worker, args=(queue,))
+        worker.start()
+        workers.append(worker)
+        
+    idx = 0
+    for image, img_path in loader(path):
+        queue.put(((image, img_path, idx), kwargs))
+        idx += 1
+    queue.join()
+    for i in range(nworkers):
+        queue.put(None)
+    for worker in workers:
+        worker.join()
